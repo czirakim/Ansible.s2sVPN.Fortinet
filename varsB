@@ -1,0 +1,26 @@
+vpn:
+  site:
+    host: 10.0.0.22
+    username: admin
+    password: admin
+    vdom: root
+    peerIP: 192.168.1.1
+    pskey: Ohmah4Ookee0
+    dh: 5
+    proposal: des-sha512
+    phase2keylifetime: 3600
+    subnets:
+      site_local: Tokyo
+      site_remote: Dublin
+      sas:
+        - name: sa1
+          local: 172.16.2.0 255.255.255.0
+          remote: 172.16.1.0 255.255.255.0
+        - name: sa2
+          local: 172.16.22.0 255.255.255.0
+          remote: 172.16.11.0 255.255.255.0
+        - name: sa3
+          local: 172.16.22.0 255.255.255.0
+          remote: 172.16.1.0 255.255.255.0
+
+

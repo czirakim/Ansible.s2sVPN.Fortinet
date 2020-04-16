@@ -1,0 +1,223 @@
+---
+- hosts: localhost
+  gather_facts: no
+  vars_files:
+    - "{{vars}}"
+  tasks:
+
+  - name: VPN PHASE1
+    tags: vpn1
+    fortios_vpn_ipsec_phase1_interface:
+      host:  "{{ item.value.host }}"
+      username: "{{ item.value.username }}"
+      password: "{{ item.value.password }}"
+      vdom:  "{{ item.value.vdom }}"
+      https: "False"
+      state: "present"
+      vpn_ipsec_phase1_interface:
+        name: "P1vpn-to-{{item.value.subnets.site_remote}}"
+        interface: "port2" 
+        peertype: "any"
+        proposal: "{{item.value.proposal}}"
+        dpd_retryinterval: "5"
+        dhgrp: "{{item.value.dh}}"
+        psksecret: "{{item.value.pskey}}" 
+        remote_gw: "{{item.value.peerIP}}"
+    with_dict: "{{vpn}}"  
+    register: result
+
+  - set_fact: hostname="{{vpn.site.host}}"
+              user="{{vpn.site.username}}"
+              password="{{vpn.site.password}}"
+              vdom="{{vpn.site.vdom}}"
+              proposal="{{vpn.site.proposal}}"
+              phase2keylifetime="{{vpn.site.phase2keylifetime}}"
+              site_local_name="{{vpn.site.subnets.site_local}}"
+              site_remote_name="{{vpn.site.subnets.site_remote}}"
+              sas="{{vpn.site.subnets.sas}}"
+    tags: route,vpn_status
+
+  - name: VPN PHASE2
+    tags: vpn1
+    fortios_vpn_ipsec_phase2_interface:
+      host:  "{{ hostname }}"
+      username: "{{ user }}"
+      password: "{{ password }}"
+      vdom:  "{{ vdom }}"
+      https: "False"
+      state: "present"
+      vpn_ipsec_phase2_interface:
+        name: "P2vpn-to-{{site_remote_name}}-{{item.name}}"
+        phase1name: "P1vpn-to-{{site_remote_name}}"
+        proposal: "{{ proposal }}"
+        replay: "enable"
+        pfs: "enable"
+        auto_negotiate: "enable"
+        keylifeseconds: "{{phase2keylifetime }}"
+        src_subnet: "{{item.local}}"
+        dst_subnet: "{{item.remote}}" 
+    with_items: "{{sas}}"
+    
+
+  - name: firewall address local
+    tags: firewall_addr
+    fortios_firewall_address:
+      host:  "{{ hostname }}"
+      username: "{{ user }}"
+      password: "{{ password }}"
+      vdom:  "{{ vdom }}"
+      https: "False"
+      state: "present"
+      firewall_address:                                 
+        name: "{{site_local_name}}-{{item.name}}"
+        subnet: "{{item.local}}"
+    with_items: "{{sas}}"
+
+  - name: firewall address remote
+    tags: firewall_addr
+    fortios_firewall_address:
+      host:  "{{ hostname }}"
+      username: "{{ user }}"
+      password: "{{ password }}"
+      vdom:  "{{ vdom }}"
+      https: "False"
+      state: "present"
+      firewall_address:
+        name: "{{site_remote_name}}-{{item.name}}"
+        subnet: "{{item.remote}}"
+    with_items: "{{sas}}"
+
+
+  - name: firewall policy outbound
+    tags: firewall_out
+    fortios_firewall_policy:
+      host: "{{ hostname }}"   
+      username: "{{ user }}"
+      password: "{{ password }}"
+      vdom: "{{ vdom }}"
+      https: "False"
+      state: "present"
+      firewall_policy:
+        policyid: "0"
+        srcintf:
+         - name: "port3"
+        dstintf:
+         - name: "P1vpn-to-{{site_remote_name}}"
+        dstaddr:
+         - name: "{{site_remote_name}}-{{item.name}}"
+        srcaddr:
+         - name: "{{site_local_name}}-{{item.name}}"
+        schedule: "always"
+        action: "accept"
+        service:
+         - name: "PING"
+         - name: "SSH" 
+    with_items: "{{sas}}"
+
+  - name: firewall policy inbound
+    tags: firewall_in                                                                                                                                                                    
+    fortios_firewall_policy:                                                                                                                                                                              
+      host: "{{ hostname }}"                                                                                                                                                                              
+      username: "{{ user }}"                                                                                                                                                                       
+      password: "{{ password }}"                                                                                                                                                           
+      vdom: "{{ vdom }}"                                                                                                                                                                      
+      https: "False"                                                                                                                                                                                    
+      state: "present"                                                                                                                                                                         
+      firewall_policy:                                                                                                                                                                      
+        policyid: "0"                                                                                                                                                                                 
+        srcintf:                                                                                                                                                                                               
+         - name: "P1vpn-to-{{site_remote_name}}"                                                                                                                                
+        dstintf:                                                                                                                                                                                        
+         - name: "port3"                                                                                                      
+        dstaddr:                                                                                                                                                                                        
+         - name: "{{site_local_name}}-{{item.name}}"
+        srcaddr:                                                                                                                                                                                              
+         - name: "{{site_remote_name}}-{{item.name}}"
+        schedule: "always"                                                                                                                                                                                 
+        action: "accept"                                                                                                                                                                                 
+        service:                                                                                                                                                                                                
+         - name: "PING"                                                                                                                                                                                           
+         - name: "SSH"                                                                                                                                                                                           
+    with_items: "{{sas}}"
+
+  - name: route through vpn tunnel
+    tags: route                                                                                                                                                                                
+    ignore_errors: yes
+    fortios_router_static:          
+      host: "{{ hostname }}"                                                                                                                                                                             
+      username: "{{ user }}"                                                                                                                                                     
+      password: "{{ password }}"                                                                                                                                                            
+      vdom: "{{ vdom }}"                                                                                                                                                                    
+      https: "False"                                                                                                                                                                                    
+      state: "present"                                                                                                                                                                                  
+      router_static:
+        dst: "{{item.remote}}"
+        device: "P1vpn-to-{{site_remote_name}}"
+        seq_num: "0" 
+    with_items: "{{sas}}"
+  
+  
+  post_tasks:
+
+  - name: get auth cookie
+    tags: vpn_status
+    uri:
+      url: "http://{{hostname}}/logincheck"
+      method: POST
+      validate_certs: no
+      return_content: yes
+      status_code: 200
+      body:
+        "username={{user}}&secretkey={{password}}" 
+    register: output 
+  - set_fact: cookie="{{output.cookies_string}}"
+    tags: vpn_status
+
+  - name: get vpn status  
+    tags: vpn_status
+    uri:
+      url: "http://{{hostname}}/api/v2/monitor/vpn/ipsec/select/"
+      method: GET
+      validate_certs: no
+      return_content: yes
+      status_code: 200
+      headers:
+         Cookie: "{{cookie}}" 
+    register: output 
+
+  - set_fact: result="{{output.json }}"
+    tags: vpn_status     
+ 
+  - set_fact:
+      name: " {{ result | json_query(query1) }}"  
+      status: "{{ result | json_query(query2) }}"
+      in_bytes: "{{ result | json_query(query3) }}"
+      out_bytes: "{{ result | json_query(query4) }}"
+    vars:
+      query1: "results[?name=='P1vpn-to-{{site_remote_name}}'].proxyid[*].p2name"
+      query2: "results[?name=='P1vpn-to-{{site_remote_name}}'].proxyid[*].status "
+      query3: "results[?name=='P1vpn-to-{{site_remote_name}}'].proxyid[*].incoming_bytes "
+      query4: "results[?name=='P1vpn-to-{{site_remote_name}}'].proxyid[*].outgoing_bytes "
+    tags: vpn_status   
+
+  - name: print status
+    vars:
+      msg: |
+           VPN status:
+           Name: {{name}}
+           Status: {{status}}
+           inBytes: {{in_bytes}}
+           outBytes: {{out_bytes}}
+    debug:
+      msg: "{{ msg.split('\n')}}"
+    tags: vpn_status 
+   
+  - name: logout
+    tags: vpn_status 
+    uri: 
+      url: "http://{{hostname}}/logout"
+      method: POST
+      status_code: 200
+
+
+
