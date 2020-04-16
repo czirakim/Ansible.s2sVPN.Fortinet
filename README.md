@@ -14,8 +14,7 @@ The project is made of 2 var files and a playbook. VarsA file is for siteA and v
 <br> This file contains everyting that is needed to establish the vpn: 
 <br>pre-shared-key, DH group, peer IP, the phase1 and phase2 proposal (i've used the same one for both),
 <br>local/remote site name, local/remote subnets.
-<br>The playbook contains all the tasks for creating the vpn, policies, routing
-<br>and showing the status of the vpn.
+<br>The playbook contains all the tasks for creating the vpn, policies, routing and showing the status of the vpn.
   
 ## Credits
 This was written by Mihai Cziraki
